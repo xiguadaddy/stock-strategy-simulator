@@ -4,7 +4,9 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
+from urllib.parse import unquote
 from sklearn.linear_model import LinearRegression
+from GoogleNews import GoogleNews
 
 # --- Internationalization ---
 TRANSLATIONS = {
@@ -62,7 +64,14 @@ TRANSLATIONS = {
         "buy_pct": "Buy Amount (% of Cash)",
         "sell_threshold": "Sell Rise Threshold (%)",
         "sell_pct": "Sell Amount (% of Shares)",
-        "strat_custom": "Custom Threshold Strategy (Dynamic)"
+        "strat_custom": "Custom Threshold Strategy (Dynamic)",
+        "historical_trend": "Historical Trend",
+        "predicted_trend": "Predicted Trend (Future)",
+        "time_range": "History Range",
+        "news_section": "Latest News for {}",
+        "read_more": "Read more",
+        "pub_time": "Published: {}",
+        "sim_probability": "Success Probability: {:.1f}%"
     },
     "zh": {
         "page_title": "股票策略模拟器",
@@ -118,7 +127,14 @@ TRANSLATIONS = {
         "buy_pct": "买入资金比例 (%)",
         "sell_threshold": "上涨卖出阈值 (%)",
         "sell_pct": "卖出持仓比例 (%)",
-        "strat_custom": "自定义阈值策略 (动态)"
+        "strat_custom": "自定义阈值策略 (动态)",
+        "historical_trend": "历史趋势",
+        "predicted_trend": "预测趋势 (未来)",
+        "time_range": "历史范围",
+        "news_section": "{} 最新资讯",
+        "read_more": "阅读更多",
+        "pub_time": "发布时间: {}",
+        "sim_probability": "达成目标概率: {:.1f}%"
     }
 }
 
@@ -477,21 +493,71 @@ if stock:
     required_return = (target_capital - initial_capital) / initial_capital
     col3.metric(t["required_return"], f"{required_return:.1%}")
 
-    # 1. Run Simulation
+    # 1. Price Path Simulation
     st.subheader(t["sim_section"])
-    with st.spinner(t["sim_spinner"]):
-        sim_paths = simulate_price_paths(current_price, target_price, duration_months, volatility, num_sims)
     
-    # Plot Simulations
-    fig_sim = go.Figure()
-    # Plot first 10 paths to avoid clutter
-    for i in range(min(10, num_sims)):
-        fig_sim.add_trace(go.Scatter(y=sim_paths[:, i], mode='lines', name=f'Sim {i+1}', opacity=0.3, line=dict(width=1)))
+    col_hist, col_pred = st.columns(2)
     
-    fig_sim.add_hline(y=target_price, line_dash="dash", line_color="green", annotation_text=t["target_price"])
-    fig_sim.add_hline(y=current_price, line_dash="dash", line_color="gray", annotation_text=t["current_price"])
-    fig_sim.update_layout(title=t["chart_title"].format(ticker), xaxis_title=t["chart_xaxis"], yaxis_title=t["chart_yaxis"])
-    st.plotly_chart(fig_sim, use_container_width=True)
+    # --- Left Column: Historical Trend ---
+    with col_hist:
+        st.markdown(f"**{t['historical_trend']}**")
+        hist_range = st.selectbox(t["time_range"], ["1mo", "3mo", "6mo", "1y", "2y", "5y", "max"], index=3)
+        
+        # Fetch specific history for plotting
+        try:
+            hist_plot = stock.history(period=hist_range)
+            fig_hist = go.Figure()
+            fig_hist.add_trace(go.Scatter(x=hist_plot.index, y=hist_plot['Close'], mode='lines', name='Close', line=dict(color='blue')))
+            fig_hist.update_layout(
+                title=None,
+                xaxis_title=None,
+                yaxis_title=t["chart_yaxis"],
+                margin=dict(l=0, r=0, t=0, b=0),
+                height=400
+            )
+            st.plotly_chart(fig_hist, use_container_width=True)
+        except Exception as e:
+            st.error(f"Error plotting history: {e}")
+
+    # --- Right Column: Predicted Trend ---
+    with col_pred:
+        st.markdown(f"**{t['predicted_trend']}**")
+        with st.spinner(t["sim_spinner"]):
+            sim_paths = simulate_price_paths(current_price, target_price, duration_months, volatility, num_sims)
+        
+        # Generate future dates
+        future_dates = [datetime.now() + timedelta(days=i) for i in range(len(sim_paths))]
+        
+        fig_sim = go.Figure()
+        
+        # Plot simulations
+        for i in range(min(10, num_sims)):
+            # Calculate simple probability of this path hitting target (just for visualization label)
+            # In reality, we'd use the aggregate success rate
+            fig_sim.add_trace(go.Scatter(
+                x=future_dates, 
+                y=sim_paths[:, i], 
+                mode='lines', 
+                name=f'Sim {i+1}', 
+                opacity=0.3, 
+                line=dict(width=1)
+            ))
+        
+        # Add Target Line
+        fig_sim.add_hline(y=target_price, line_dash="dash", line_color="green", annotation_text=t["target_price"])
+        
+        # Add Start Line (Current Price)
+        fig_sim.add_hline(y=current_price, line_dash="dash", line_color="gray", annotation_text=t["current_price"])
+        
+        fig_sim.update_layout(
+            title=None,
+            xaxis_title=None,
+            yaxis_title=None,
+            margin=dict(l=0, r=0, t=0, b=0),
+            height=400,
+            showlegend=True
+        )
+        st.plotly_chart(fig_sim, use_container_width=True)
 
     # 2. Strategy Comparison
     st.subheader(t["strat_section"])
@@ -561,6 +627,41 @@ if stock:
             st.warning(t["warning_msg"].format(target_capital))
         else:
             st.balloons()
+
+    # --- News Section ---
+    st.markdown("---")
+    st.subheader(t["news_section"].format(ticker))
+    
+    try:
+        # Initialize GoogleNews
+        g_lang = 'zh-CN' if lang == 'zh' else 'en'
+        googlenews = GoogleNews(lang=g_lang, period='7d')
+        
+        # Construct query
+        # Search for company name to get broader news coverage
+        search_query = company_name
+        googlenews.search(search_query)
+        news_results = googlenews.result()
+        
+        if news_results:
+            for item in news_results[:5]: # Show top 5
+                with st.expander(f"📰 {item.get('title', 'No Title')}"):
+                    pub_date = item.get('date', 'Unknown Date')
+                    st.caption(t["pub_time"].format(pub_date))
+                    st.markdown(f"**Publisher:** {item.get('media', 'Google News')}")
+                    link = item.get('link')
+                    if link:
+                        # Decode URL (fixes issues with double-encoded params like %3F instead of ?)
+                        link = unquote(link)
+                        # Clean up Google News links which might have tracking params appended
+                        if '&ved=' in link:
+                            link = link.split('&ved=')[0]
+                        st.markdown(f"[{t['read_more']}]({link})")
+        else:
+            st.info("No recent news found via Google News.")
+            
+    except Exception as e:
+        st.error(f"Could not fetch news: {e}")
 
 else:
     st.warning(t["error_ticker"])

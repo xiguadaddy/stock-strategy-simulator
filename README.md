@@ -23,6 +23,8 @@ This project is a comprehensive stock trading strategy simulator designed to hel
     - **Grid Trading**: Profiting from volatility.
     - **Rebalancing**: Fixed asset allocation.
     - **Custom Threshold**: Define your own dynamic buy/sell rules (e.g., "Buy on 5% dip, Sell on 5% rally").
+- **Visual Analysis**: Split-screen view comparing actual historical trends with Monte Carlo simulated future paths.
+- **Market Intelligence**: Real-time news aggregation from Google News for the selected company.
 - **Internationalization**: Full support for English and Chinese interfaces.
 
 ### Setup & Usage
@@ -64,6 +66,8 @@ This project is a comprehensive stock trading strategy simulator designed to hel
     * **网格交易**: 利用震荡行情获利。
     - **动态平衡**: 固定资产配置比例。
     - **自定义阈值策略**: 定义您自己的动态买卖规则（例如：“跌5%买入，涨5%卖出”）。
+- **可视化分析**: 分屏对比实际历史走势与蒙特卡洛模拟的未来路径。
+- **市场情报**: 实时聚合来自 Google News 的目标公司新闻。
 - **国际化支持**: 完美支持中文和英文界面切换。
 
 ### 安装与使用
